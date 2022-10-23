@@ -11,7 +11,6 @@ namespace ExcelUpdateApp
         Application _xlSamp;
         Workbook _xlWorkBook;
         Worksheet _xlWorkSheet;
-        object _misValue;
         string _excelName;
 
         public ExcelHelper() { }
@@ -23,12 +22,10 @@ namespace ExcelUpdateApp
             _xlSamp = new Application();
             if (_xlSamp == null)
             {
-                Console.WriteLine("Excel is not Insatalled");
-                Console.ReadKey();
-                return;
+                throw new Exception("Excel is not Insatalled");
             }
 
-            _misValue = System.Reflection.Missing.Value;
+            object _misValue = System.Reflection.Missing.Value;
 
             //Create a new excel book and sheet
             _xlWorkBook = _xlSamp.Workbooks.Add(_misValue);
@@ -42,7 +39,7 @@ namespace ExcelUpdateApp
                 return "book.xls";
             }
             var ext = Path.GetExtension(excelName);
-            if (ext == "xls" || ext == "xlsx")
+            if (ext == ".xls" || ext == ".xlsx")
             {
                 return excelName;
             }
@@ -52,7 +49,7 @@ namespace ExcelUpdateApp
             }
         }
 
-        public void OpenExcel(string excelName)
+        public void OpenExcel(string excelName, string worksheetName = null)
         {
             ReleaseExcelFile();
             _excelName = AddExcelExtension(excelName);
@@ -62,15 +59,20 @@ namespace ExcelUpdateApp
             _xlSamp = new Application();
             if (_xlSamp == null)
             {
-                Console.WriteLine("Excel is not Insatalled");
-                Console.ReadKey();
-                return;
+                throw new Exception("Excel is not Insatalled");
             }
 
             try
             {
                 _xlWorkBook = _xlSamp.Workbooks.Open(pathExcel);
-                _xlWorkSheet = (Worksheet)_xlWorkBook.Worksheets.get_Item(1);
+                if (string.IsNullOrWhiteSpace(worksheetName))
+                {
+                    _xlWorkSheet = (Worksheet)_xlWorkBook.Worksheets.get_Item(1);
+                }
+                else
+                {
+                    _xlWorkSheet = (Worksheet)_xlWorkBook.Worksheets[worksheetName];
+                }
             }
             catch (Exception ex)
             {
@@ -101,29 +103,59 @@ namespace ExcelUpdateApp
 
         public string GetCellValue(int row, int column)
         {
-            return (string)(_xlWorkSheet.Cells[row, column] as Microsoft.Office.Interop.Excel.Range).Value;
+            return Convert.ToString((_xlWorkSheet.Cells[row, column] as Microsoft.Office.Interop.Excel.Range).Value);
         }
 
         private string CheckValue(string value)
         {
-            return string.IsNullOrWhiteSpace(value) ? string.Empty : value;
+            return string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim();
         }
 
-        public string[] GetColumn(int column)
+        public string[] GetColumn(int column, bool removeEmpty = false, bool removeHeader = false)
         {
             Microsoft.Office.Interop.Excel.Range range = (Microsoft.Office.Interop.Excel.Range)_xlWorkSheet.UsedRange.Columns[column];
             var count = range.Rows.Count;
             var arr = range.Value;
             var list = new List<string>();
-            for (int i = 1; i <= count; i++)
+            for (int i = removeHeader ? 2 : 1; i <= count; i++)
             {
-                var cellValue = arr[i, 1] as string;
-                list.Add(CheckValue(cellValue));
+                string cellValue = Convert.ToString(arr[i, 1]);
+
+                if (!removeEmpty)
+                {
+                    list.Add(CheckValue(cellValue));
+                }
+                else if (removeEmpty && !string.IsNullOrWhiteSpace(cellValue))
+                {
+                    list.Add(CheckValue(cellValue));
+                }
             }
             return list.ToArray();
         }
 
-        public string[] GetRow(int row)
+        public Dictionary<int, string> GetColumnKeyValue(int column, bool removeEmpty = false, bool removeHeader = false)
+        {
+            Microsoft.Office.Interop.Excel.Range range = (Microsoft.Office.Interop.Excel.Range)_xlWorkSheet.UsedRange.Columns[column];
+            var count = range.Rows.Count;
+            var arr = range.Value;
+            var dic = new Dictionary<int, string>();
+            for (int i = removeHeader ? 2 : 1; i <= count; i++)
+            {
+                string cellValue = Convert.ToString(arr[i, 1]);
+
+                if (!removeEmpty)
+                {
+                    dic[i] = CheckValue(cellValue);
+                }
+                else if (removeEmpty && !string.IsNullOrWhiteSpace(cellValue))
+                {
+                    dic[i] = cellValue;
+                }
+            }
+            return dic;
+        }
+
+        public string[] GetRow(int row, bool removeEmpty = false)
         {
             Microsoft.Office.Interop.Excel.Range range = (Microsoft.Office.Interop.Excel.Range)_xlWorkSheet.UsedRange.Rows[row];
             var count = range.Columns.Count;
@@ -131,10 +163,39 @@ namespace ExcelUpdateApp
             var list = new List<string>();
             for (int i = 1; i <= count; i++)
             {
-                var cellValue = arr[1, i] as string;
-                list.Add(CheckValue(cellValue));
+                string cellValue = Convert.ToString(arr[1, i]);
+
+                if (!removeEmpty)
+                {
+                    list.Add(CheckValue(cellValue));
+                }
+                else if (removeEmpty && !string.IsNullOrWhiteSpace(cellValue))
+                {
+                    list.Add(CheckValue(cellValue));
+                }
             }
             return list.ToArray();
+        }
+
+        public Dictionary<int, string> GetRowKeyValue(int row, bool removeEmpty = false)
+        {
+            Microsoft.Office.Interop.Excel.Range range = (Microsoft.Office.Interop.Excel.Range)_xlWorkSheet.UsedRange.Rows[row];
+            var count = range.Columns.Count;
+            var arr = range.Value;
+            var dic = new Dictionary<int, string>();
+            for (int i = 1; i <= count; i++)
+            {
+                string cellValue = Convert.ToString(arr[1, i]);
+                if (!removeEmpty)
+                {
+                    dic[i] = CheckValue(cellValue);
+                }
+                else if (removeEmpty && !string.IsNullOrWhiteSpace(cellValue))
+                {
+                    dic[i] = cellValue;
+                }
+            }
+            return dic;
         }
 
         public int GetRowNumberByValue(string value, int column, bool match = true)
@@ -144,8 +205,28 @@ namespace ExcelUpdateApp
             var arr = range.Value;
             for (int i = 1; i <= count; i++)
             {
-                var cellValue = arr[i, 1] as string;
+                string cellValue = Convert.ToString(arr[i, 1]);
                 if (cellValue == value && match)
+                {
+                    return i;
+                }
+                else if (cellValue != null && cellValue.Contains(value))
+                {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        public int GetColumnNumberByValue(string value, int row, bool matchAll = true)
+        {
+            Microsoft.Office.Interop.Excel.Range range = (Microsoft.Office.Interop.Excel.Range)_xlWorkSheet.UsedRange.Rows[row];
+            var count = range.Columns.Count;
+            var arr = range.Value;
+            for (int i = 1; i <= count; i++)
+            {
+                string cellValue = Convert.ToString(arr[1, i]);
+                if (cellValue == value && matchAll)
                 {
                     return i;
                 }
@@ -185,15 +266,17 @@ namespace ExcelUpdateApp
             }
 
             pathExcel = pathExcelTry;
-            _xlWorkBook.SaveAs(pathExcel, XlFileFormat.xlWorkbookNormal, _misValue, _misValue, _misValue, _misValue,
-                XlSaveAsAccessMode.xlExclusive, _misValue, _misValue, _misValue, _misValue, _misValue);
 
-            Quit();
+            //_xlWorkBook.SaveAs(pathExcel, XlFileFormat.xlWorkbookNormal, _misValue, _misValue, _misValue, _misValue,
+            //    XlSaveAsAccessMode.xlExclusive, _misValue, _misValue, _misValue, _misValue, _misValue);
+            
+            _xlWorkBook.SaveAs(pathExcel);
         }
         public void Quit()
         {
-            _xlWorkBook.Close(true, _misValue, _misValue);
-            _xlSamp.Quit();
+            //_xlWorkBook?.Close(true, _misValue, _misValue);
+            _xlWorkBook?.Close();
+            _xlSamp?.Quit();
             ReleaseExcelFile();
         }
 
